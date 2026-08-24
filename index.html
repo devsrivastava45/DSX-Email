@@ -141,8 +141,10 @@
 <script>
 let currentPage = 1;
 function nextPage(n){
-  document.getElementById('page'+currentPage).classList.remove('active');
-  document.getElementById('page'+n).classList.add('active');
+  const current = document.getElementById('page'+currentPage);
+  const next = document.getElementById('page'+n);
+  if(current) current.classList.remove('active');
+  if(next) next.classList.add('active');
   currentPage = n;
   window.scrollTo(0,0);
 }
@@ -163,7 +165,7 @@ async function sendMail() {
   btn.disabled = true; btn.innerText = 'Sending...';
 
   try {
-    const res = await fetch('http://localhost:3000/send-email', {
+    const res = await fetch('/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ toEmail, subject, message })
@@ -179,7 +181,7 @@ async function sendMail() {
     }
 
   } catch (error) {
-    showMsg('Server not running. Start with: node server.js', 'error');
+    showMsg('Error: ' + error.message, 'error');
   }
   
   btn.disabled = false; btn.innerText = 'Send Anonymously';
