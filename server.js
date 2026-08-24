@@ -90,6 +90,11 @@ app.post('/send-email', async (req, res) => {
   }
 });
 
+// Home page serve karne ke liye
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`✅ Anonymous Mailer running on port ${PORT}`);
