@@ -12,7 +12,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Security + Speed Middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false
+}));
 app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname)));
