@@ -7,10 +7,8 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
-
 const PORT = process.env.PORT || 3000;
 
-// Security + Middleware
 app.use(helmet({
   contentSecurityPolicy: false
 }));
@@ -19,7 +17,6 @@ app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname)));
 
-// Rate Limit: 10 requests per 15 min per IP
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -31,24 +28,17 @@ const limiter = rateLimit({
 
 app.use('/send-email', limiter);
 
-// Gmail SMTP
+// --- FIXED TRANSPORTER FOR RENDER ---
 const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-
+  service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
   },
-
-  // Timeout settings
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 20000
+  // Render pe IPv6 issue fix
+  family: 4 
 });
 
-// Verify Gmail connection
 transporter.verify((error, success) => {
   if (error) {
     console.log('❌ Gmail SMTP Error:', error.message);
@@ -57,86 +47,47 @@ transporter.verify((error, success) => {
   }
 });
 
-// Send Email
 app.post('/send-email', async (req, res) => {
   const { toEmail, subject, message } = req.body;
-
-  const userIP =
-    req.headers['x-forwarded-for'] ||
-    req.socket.remoteAddress;
-
-  const time = new Date().toLocaleString('en-IN', {
-    timeZone: 'Asia/Kolkata'
-  });
+  const userIP = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
   if (!toEmail || !subject || !message) {
-    return res.status(400).json({
-      success: false,
-      message: 'All fields are required'
-    });
+    return res.status(400).json({ success: false, message: 'All fields are required' });
   }
-
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
-    return res.status(400).json({
-      success: false,
-      message: 'Invalid Receiver Email'
-    });
+    return res.status(400).json({ success: false, message: 'Invalid Receiver Email' });
   }
 
   try {
-    // Send email
     await transporter.sendMail({
       from: `"DSX Production" <${process.env.EMAIL_USER}>`,
       to: toEmail,
       subject: subject,
-      html: `
-        <div style="font-family:Arial;padding:20px;">
-          <p>${message.replace(/\n/g, '<br>')}</p>
-          <hr>
-          <small style="color:#888;">
-            This message was sent via DSX Production
-          </small>
-        </div>
-      `
+      html: `<div style="font-family:Arial;padding:20px;"><p>${message.replace(/\n/g, '<br>')}</p><hr><small style="color:#888;">This message was sent via DSX Production</small></div>`
     });
 
-    // Send log
-    await transporter.sendMail({
-      from: `"DSX Log" <${process.env.EMAIL_USER}>`,
-      to: process.env.LOG_EMAIL,
-      subject: `Mail Log → ${toEmail}`,
-      html: `
-        <h2>📩 Mail Log</h2>
-        <p><b>Sent To:</b> ${toEmail}</p>
-        <p><b>Subject:</b> ${subject}</p>
-        <p><b>Message:</b><br>${message.replace(/\n/g, '<br>')}</p>
-        <p><b>User IP:</b> ${userIP}</p>
-        <p><b>Time:</b> ${time}</p>
-      `
-    });
+    if(process.env.LOG_EMAIL){
+      await transporter.sendMail({
+        from: `"DSX Log" <${process.env.EMAIL_USER}>`,
+        to: process.env.LOG_EMAIL,
+        subject: `Mail Log → ${toEmail}`,
+        html: `<h2>📩 Mail Log</h2><p><b>Sent To:</b> ${toEmail}</p><p><b>Subject:</b> ${subject}</p><p><b>Message:</b><br>${message.replace(/\n/g, '<br>')}</p><p><b>User IP:</b> ${userIP}</p><p><b>Time:</b> ${time}</p>`
+      });
+    }
 
-    res.json({
-      success: true,
-      message: 'Email sent successfully!'
-    });
+    res.json({ success: true, message: 'Email sent successfully!' });
 
   } catch (error) {
     console.log('❌ Email Error:', error);
-
-    res.status(500).json({
-      success: false,
-      message: 'Failed to send email',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Failed to send email', error: error.message });
   }
 });
 
-// Home page
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`✅ Anonymous Mailer running on port ${PORT}`);
 });
