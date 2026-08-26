@@ -9,12 +9,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Resend Client - key Render ke Environment se lega
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-app.use(helmet({
-  contentSecurityPolicy: false
-}));
+app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname)));
@@ -22,10 +19,7 @@ app.use(express.static(path.join(__dirname)));
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: {
-    success: false,
-    message: 'Too many requests. Try again later.'
-  }
+  message: { success: false, message: 'Too many requests. Try again later.' }
 });
 app.use('/send-email', limiter);
 
@@ -37,56 +31,39 @@ app.post('/send-email', async (req, res) => {
   if (!toEmail || !subject || !message) {
     return res.status(400).json({ success: false, message: 'All fields are required' });
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
-    return res.status(400).json({ success: false, message: 'Invalid Receiver Email' });
-  }
 
   try {
-    // Main email
-    await resend.emails.send({
+    const { data, error } = await resend.emails.send({
       from: 'DSX Production <onboarding@resend.dev>',
       to: toEmail,
       subject: subject,
-      html: `
-        <div style="font-family:Arial;padding:20px;line-height:1.6;">
-          <p>${message.replace(/\n/g, '<br>')}</p>
-          <hr style="margin:20px 0;">
-          <small style="color:#888;">This message was sent via DSX Production</small>
-        </div>
-      `
+      html: `<div style="font-family:Arial;padding:20px;line-height:1.6;"><p>${message.replace(/\n/g, '<br>')}</p><hr><small>Sent via DSX Production</small></div>`
     });
 
-    // Log email to you
-    if (process.env.LOG_EMAIL) {
+    if (error) {
+      console.log('❌ RESEND ERROR:', error);
+      return res.status(500).json({ success: false, message: error.message, error });
+    }
+
+    console.log('✅ Email sent:', data);
+
+    // Log - only if LOG_EMAIL is different from toEmail to avoid duplicate
+    if (process.env.LOG_EMAIL && process.env.LOG_EMAIL !== toEmail) {
       await resend.emails.send({
         from: 'DSX Log <onboarding@resend.dev>',
         to: process.env.LOG_EMAIL,
-        subject: `📩 Mail Log → ${toEmail}`,
-        html: `
-          <h2>Mail Log</h2>
-          <p><b>Sent To:</b> ${toEmail}</p>
-          <p><b>Subject:</b> ${subject}</p>
-          <p><b>Message:</b><br>${message.replace(/\n/g, '<br>')}</p>
-          <hr>
-          <p><b>User IP:</b> ${userIP}</p>
-          <p><b>Time:</b> ${time}</p>
-        `
+        subject: `📩 Log → ${toEmail}`,
+        html: `<p><b>To:</b> ${toEmail}<br><b>Sub:</b> ${subject}<br><b>Msg:</b> ${message}<br><b>IP:</b> ${userIP}<br><b>Time:</b> ${time}</p>`
       });
     }
 
-    res.json({ success: true, message: 'Email sent successfully!' });
+    res.json({ success: true, message: 'Email sent successfully!', id: data.id });
 
   } catch (error) {
-    console.log('❌ Email Error:', error);
+    console.log('❌ Server Error:', error);
     res.status(500).json({ success: false, message: 'Failed to send email', error: error.message });
   }
 });
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Anonymous Mailer running on port ${PORT}`);
-});
-
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
+app.listen(PORT, () => console.log(`✅ Running on port ${PORT}`));
