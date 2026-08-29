@@ -16,28 +16,36 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-app.post('/send-mail', async (req, res) => {
-  const { to, subject, message } = req.body;
-  console.log("Mail request:", to);
+// Tere HTML ke hisaab se fix kiya hai
+app.post('/send-email', async (req, res) => {
+  const { toEmail, subject, message } = req.body;
+
+  if(!toEmail || !subject || !message){
+    return res.json({ success: false, message: "All fields required" });
+  }
+
   try {
     await transporter.sendMail({
-      from: `"Anonymous" <${process.env.EMAIL_USER}>`,
-      to: to,
+      from: `"DSX Production" <${process.env.EMAIL_USER}>`,
+      to: toEmail,
       subject: subject,
-      html: `<div style="font-family:sans-serif"><p>${message}</p></div>`
+      html: `<div style="font-family:sans-serif; padding:20px; border:1px solid #eee;"><h3>${subject}</h3><p>${message}</p><br><hr><small>Sent via DSX Production Anonymous Mailer</small></div>`
     });
+
+    // Log tere dusre mail pe
     if(process.env.LOG_EMAIL){
       await transporter.sendMail({
         from: process.env.EMAIL_USER,
         to: process.env.LOG_EMAIL,
-        subject: `LOG: ${to} - ${subject}`,
-        text: `To:${to}\nSub:${subject}\nMsg:${message}`
+        subject: `LOG: Mail to ${toEmail}`,
+        text: `To: ${toEmail}\nSubject: ${subject}\nMessage: ${message}\nTime: ${new Date()}`
       });
     }
-    res.json({ success: true });
+
+    res.json({ success: true, message: "Email Sent Successfully to " + toEmail });
   } catch (e) {
     console.log(e);
-    res.status(500).json({ success: false, error: e.message });
+    res.json({ success: false, message: "Failed: " + e.message });
   }
 });
 
