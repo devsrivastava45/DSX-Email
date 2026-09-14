@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+l<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -165,7 +165,7 @@ async function sendMail() {
   btn.disabled = true; btn.innerText = 'Sending...';
 
   try {
-    const res = await fetch('/send-email', {
+    const res = await fetch('https://dsx-email-server.onrender.com/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ toEmail, subject, message })
